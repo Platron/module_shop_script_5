@@ -74,7 +74,24 @@ class PG_Signature {
 		array_unshift($arrParams, $strScriptName);
 		array_push   ($arrParams, $strSecretKey);
 
-		return join(';', $arrParams);
+		return self::arJoin($arrParams);
+	}
+
+	private static function arJoin ($in) {
+		return rtrim(self::arJoinProcess($in, ''), ';');
+	}
+
+	private static function arJoinProcess ($in, $str) {
+		if (is_array($in)) {
+			ksort($in);
+			$s = '';
+			foreach($in as $v) {
+				$s .= self::arJoinProcess($v, $str);
+			}
+			return $s;
+		} else {
+			return $str . $in . ';';
+		}
 	}
 
 	/********************** singing XML ***********************/
@@ -148,7 +165,7 @@ class PG_Signature {
 			 */
 			$name = $parent_name . $tag->getName().sprintf('%03d', $i);
 
-			if ( $tag->children()->count() > 0 ) {
+			if ( $tag->children() ) {
 				$arrParams = array_merge($arrParams, self::makeFlatParamsXML($tag, $name));
 				continue;
 			}

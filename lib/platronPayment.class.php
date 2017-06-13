@@ -5,11 +5,14 @@
  * @property-read string $secret_key
  * @property-read string $lifetime
  * @property-read string $testmode
+ * @property-read string $ofd_send_receipt
+ * @property-read string $VAT_type
  */
 class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, waIPaymentRefund
 {
-	private $order_id;
-	private $url = 'https://www.platron.ru/payment.php';
+    private $order_id;
+    private $url = 'https://www.platron.ru/init_payment.php';
+    private $receiptUrl = 'https://www.platron.ru/receipt.php';
 
     public function allowedCurrency()
     {
@@ -23,14 +26,16 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
 	protected function init()
     {
         // Подключение класса, который работает с подписью запросов.
-		$autload = waAutoload::getInstance();
+        $autload = waAutoload::getInstance();
         $autload->add("PG_Signature", "wa-plugins/payment/platron/lib/PG_Signature.php");
+        $autload->add("OfdReceiptRequest", "wa-plugins/payment/platron/lib/OfdReceiptRequest.php");
+        $autload->add("OfdReceiptItem", "wa-plugins/payment/platron/lib/OfdReceiptItem.php");
         return parent::init();
     }
 
     public function payment($payment_form_data, $order_data, $auto_submit = true)
     {
-		$order = waOrder::factory($order_data);
+        $order = waOrder::factory($order_data);
 		
         $allowed = (array) $this->allowedCurrency();
         if (!in_array($order_data['currency_id'], $allowed)) {
@@ -39,21 +44,33 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
                 'data' => 'not allowed currency '.$order_data['currency_id'],
             );
         }
-		
-	        $form_fields = array(
+
+        $ofdReceiptItems = array();
+        foreach($order_data->items as $arrItem) {
+            $ofdReceiptItem = new OfdReceiptItem();
+            $ofdReceiptItem->label = $arrItem['name'];
+            $ofdReceiptItem->amount = round($arrItem['price'] * $arrItem['quantity'], 2);
+            $ofdReceiptItem->price = round($arrItem['price'], 2);
+            $ofdReceiptItem->quantity = $arrItem['quantity'];
+            $ofdReceiptItem->vat = $this->VAT_type;
+            $ofdReceiptItems[] = $ofdReceiptItem;
+        }
+
+        $form_fields = array(
             'pg_merchant_id'	=> $this->merchant,
-            'pg_order_id'		=> $order_data['order_id'],
-			'pg_currency'		=> $order_data['currency_id'],
-            'pg_amount'			=> number_format($order_data['total'], 2, '.', ''),
-            'pg_lifetime'		=> $this->lifetime*60, // в секундах
-			'pg_testing_mode'	=> $this->testmode == ''? 0 : 1,
-			'pg_user_ip'		=> $_SERVER['REMOTE_ADDR'],
+            'pg_order_id'       => $order_data['order_id'],
+    	    'pg_currency'       => $order_data['currency_id'],
+            'pg_amount'         => number_format($order_data['total'], 2, '.', ''),
+            'pg_lifetime'       => $this->lifetime*60, // в секундах
+    	    'pg_testing_mode'   => $this->testmode == ''? 0 : 1,
+    	    'pg_user_ip'        => $_SERVER['REMOTE_ADDR'],
             'pg_description'	=> mb_substr($order_data['description'], 0, 255, "UTF-8"),
-//			'pg_check_url'		=> $this->getRelayUrl().'index.php?app_id='.$this->app_id."&wa_merchant_id=".$this->merchant_id."&type=check",
-			'pg_result_url'		=> $this->getRelayUrl().'index.php?app_id='.$this->app_id."&wa_merchant_id=".$this->merchant_id."&type=result",
-			'pg_success_url'	=> $this->getAdapter()->getBackUrl(waAppPayment::URL_SUCCESS, array('order_id' => $order_data['order_id'])),
-			'pg_failure_url'	=> $this->getAdapter()->getBackUrl(waAppPayment::URL_DECLINE, array('order_id' => $order_data['order_id'])),
+//          'pg_check_url'		=> $this->getRelayUrl().'index.php?app_id='.$this->app_id."&wa_merchant_id=".$this->merchant_id."&type=check",
+            'pg_result_url'		=> $this->getRelayUrl().'index.php?app_id='.$this->app_id."&wa_merchant_id=".$this->merchant_id."&type=result",
+            'pg_success_url'	=> $this->getAdapter()->getBackUrl(waAppPayment::URL_SUCCESS, array('order_id' => $order_data['order_id'])),
+            'pg_failure_url'	=> $this->getAdapter()->getBackUrl(waAppPayment::URL_DECLINE, array('order_id' => $order_data['order_id'])),
             'pg_salt'			=> rand(21,43433), // Параметры безопасности сообщения. Необходима генерация pg_salt и подписи сообщения.
+            'cms_payment_module'=> 'webasyst',
         );
 		
 		preg_match_all("/\d/", @$order->contact_phone, $arrPhone);
@@ -69,13 +86,37 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
 			$form_fields['pg_user_email'] = $order_data['contact_email'];
 			$form_fields['pg_user_contact_email'] = $order_data['contact_email'];
 		}
-		$form_fields['cms_payment_module'] = 'SHOP_SCRIPT_5';
-		$form_fields['pg_sig'] = PG_Signature::make('payment.php', $form_fields, $this->secret_key);
-        $view = wa()->getView();
 
-        $view->assign('form_fields', $form_fields);
-        $view->assign('form_url', $this->getEndpointUrl());
-        $view->assign('auto_submit', $auto_submit);
+		$form_fields['pg_sig'] = PG_Signature::make('init_payment.php', $form_fields, $this->secret_key);
+
+		$response = file_get_contents($this->url . '?' . http_build_query($form_fields));
+		$responseElement = new SimpleXMLElement($response);
+
+		$checkResponse = PG_Signature::checkXML('init_payment.php', $responseElement, $this->secret_key);
+
+		$view = wa()->getView();
+
+		$view->assign('form_fields', $form_fields);
+		$view->assign('form_url', (string)$responseElement->pg_redirect_url);
+		$view->assign('auto_submit', $auto_submit);
+
+		if ($checkResponse && (string)$responseElement->pg_status == 'ok') {
+
+			if ($this->ofd_send_receipt == 1) {
+
+				$paymentId = (string)$responseElement->pg_payment_id;
+
+				$ofdReceiptRequest = new OfdReceiptRequest($this->merchant, $paymentId);
+				$ofdReceiptRequest->items = $ofdReceiptItems;
+				$ofdReceiptRequest->sign($this->secret_key);
+
+				$responseOfd = file_get_contents($this->receiptUrl . '?' . http_build_query($ofdReceiptRequest->requestArray()));
+
+			}
+
+        } else {
+			throw new waException('<h3>Error. Platron init payment failed. Payment aborted. Please contact shop.</h3>');
+		}
 
         return $view->fetch($this->path.'/templates/payment.html');
 
@@ -170,7 +211,7 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
 //	Ждем реализации метода от WebAssyst
     }
 	
-	 public function getTransactionStatus($transaction_raw_data)
+    public function getTransactionStatus($transaction_raw_data)
     {
 //	Ждем реализаций методов refund и cancel от WebAssyst
     }
