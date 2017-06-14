@@ -48,7 +48,7 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
         $ofdReceiptItems = array();
         foreach($order_data->items as $arrItem) {
             $ofdReceiptItem = new OfdReceiptItem();
-            $ofdReceiptItem->label = $arrItem['name'];
+            $ofdReceiptItem->label = substr($arrItem['name'], 0, 128);
             $ofdReceiptItem->amount = round($arrItem['price'] * $arrItem['quantity'], 2);
             $ofdReceiptItem->price = round($arrItem['price'], 2);
             $ofdReceiptItem->quantity = $arrItem['quantity'];
