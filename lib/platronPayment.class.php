@@ -56,6 +56,16 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
             $ofdReceiptItems[] = $ofdReceiptItem;
         }
 
+   		if (floatval($order_data->shipping) > 0) {
+			$ofdReceiptItem = new OfdReceiptItem();
+			$ofdReceiptItem->label = 'Shipping';
+			$ofdReceiptItem->amount = round($order_data->shipping, 2);
+			$ofdReceiptItem->price = round($order_data->shipping, 2);
+			$ofdReceiptItem->quantity = 1;
+			$ofdReceiptItem->vat = '18'; // fixed
+			$ofdReceiptItems[] = $ofdReceiptItem;
+   		}
+
         $form_fields = array(
             'pg_merchant_id'	=> $this->merchant,
             'pg_order_id'       => $order_data['order_id'],
@@ -111,6 +121,10 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
 				$ofdReceiptRequest->sign($this->secret_key);
 
 				$responseOfd = file_get_contents($this->receiptUrl . '?' . http_build_query($ofdReceiptRequest->requestArray()));
+				$responseElementOfd = new SimpleXMLElement($responseOfd);
+
+				if ((string)$responseElementOfd->pg_status != 'ok')
+					throw new waException('<h3>Error. Platron OFD check create failed. Payment aborted. Please contact shop.</h3>');
 
 			}
 
