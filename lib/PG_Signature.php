@@ -36,7 +36,8 @@ class PG_Signature {
 	 */
 	public static function make ( $strScriptName, $arrParams, $strSecretKey )
 	{
-		return md5( self::makeSigStr($strScriptName, $arrParams, $strSecretKey) );
+		$arrFlatParams = self::makeFlatParamsArray($arrParams);
+		return md5( self::makeSigStr($strScriptName, $arrFlatParams, $strSecretKey) );
 	}
 
 	/**
@@ -61,34 +62,53 @@ class PG_Signature {
 	 * @param string $strSecretKey
 	 * @return string
 	 */
-	static function debug_only_SigStr ( $strScriptName, $arrParams, $strSecretKey ) {
-		return self::makeSigStr($strScriptName, $arrParams, $strSecretKey);
+	static function debug_only_SigStr ( $strScriptName, $arrParams, $strSecretKey )
+	{
+		$arrFlatParams = self::makeFlatParamsArray($arrParams);
+		return self::makeSigStr($strScriptName, $arrFlatParams, $strSecretKey);
 	}
 
 
-	private static function makeSigStr ( $strScriptName, $arrParams, $strSecretKey ) {
+	private static function makeSigStr ( $strScriptName, array $arrParams, $strSecretKey ) {
 		unset($arrParams['pg_sig']);
-
+		
 		ksort($arrParams);
 
-		return $strScriptName .';' . self::arJoin($arrParams) . ';' . $strSecretKey;
-	}
+		array_unshift($arrParams, $strScriptName);
+		array_push   ($arrParams, $strSecretKey);
 
-	private static function arJoin ($in) {
-		return substr_replace(self::arJoinProcess($in, ''), '', -1);
+		return join(';', $arrParams);
 	}
-
-	private static function arJoinProcess ($in, $str) {
-		if (is_array($in)) {
-			ksort($in);
-			$s = '';
-			foreach($in as $v) {
-				$s .= self::arJoinProcess($v, $str);
+	
+	private static function makeFlatParamsArray ( $arrParams, $parent_name = '' )
+	{
+		$arrFlatParams = array();
+		$i = 0;
+		foreach ( $arrParams as $key => $val ) {
+			$i++;
+			if ( 'pg_sig' === $key)
+				continue;
+				
+			/**
+			 * Имя делаем вида tag001subtag001
+			 * Чтобы можно было потом нормально отсортировать и вложенные узлы не запутались при сортировке
+			 */
+            if(is_int($key)){
+                $name = substr($parent_name, 0, strlen($parent_name) - 3) . sprintf('%03d', $i);
+            }
+            else {
+                $name = $parent_name . $key . sprintf('%03d', $i);
+            }
+            
+			if (is_array($val) ) {
+				$arrFlatParams = array_merge($arrFlatParams, self::makeFlatParamsArray($val, $name));
+				continue;
 			}
-			return $s;
-		} else {
-			return $str . $in . ';';
+
+			$arrFlatParams += array($name => (string)$val);
 		}
+
+		return $arrFlatParams;
 	}
 
 	/********************** singing XML ***********************/
@@ -151,9 +171,8 @@ class PG_Signature {
 		$arrParams = array();
 		$i = 0;
 		foreach ( $xml->children() as $tag ) {
-			
 			$i++;
-			if ( 'pg_sig' == $tag->getName() )
+			if ( 'pg_sig' === $tag->getName() )
 				continue;
 				
 			/**
@@ -161,8 +180,7 @@ class PG_Signature {
 			 * Чтобы можно было потом нормально отсортировать и вложенные узлы не запутались при сортировке
 			 */
 			$name = $parent_name . $tag->getName().sprintf('%03d', $i);
-
-			if ( $tag->children() ) {
+			if ( $tag->children()->count() > 0 ) {
 				$arrParams = array_merge($arrParams, self::makeFlatParamsXML($tag, $name));
 				continue;
 			}
