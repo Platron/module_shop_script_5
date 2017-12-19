@@ -69,7 +69,7 @@ class PG_Signature {
 	}
 
 
-	private static function makeSigStr ( $strScriptName, array $arrParams, $strSecretKey ) {
+	private static function makeSigStr ( $strScriptName, $arrParams, $strSecretKey ) {
 		unset($arrParams['pg_sig']);
 		
 		ksort($arrParams);
