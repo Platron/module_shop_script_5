@@ -50,7 +50,7 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
             $ofdReceiptItem = new OfdReceiptItem();
             $ofdReceiptItem->label = substr($arrItem['name'], 0, 128);
             $ofdReceiptItem->amount = round($arrItem['price'] * $arrItem['quantity'], 2);
-            $ofdReceiptItem->price = str_replace(',', '.', strval(round($arrItem['price'], 2)));
+            $ofdReceiptItem->price = str_replace(',', '.', strval(round($arrItem['price'] - ifset($arrItem['discount'], 0.0), 2)));
             $ofdReceiptItem->quantity = $arrItem['quantity'];
             $ofdReceiptItem->vat = $this->VAT_type;
             $ofdReceiptItems[] = $ofdReceiptItem;
