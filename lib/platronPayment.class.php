@@ -62,7 +62,7 @@ class platronPayment extends waPayment implements waIPayment, waIPaymentCancel, 
 			$ofdReceiptItem->amount = round($order_data->shipping, 2);
 			$ofdReceiptItem->price = str_replace(',', '.', strval(round($order_data->shipping, 2)));
 			$ofdReceiptItem->quantity = 1;
-			$ofdReceiptItem->vat = '18'; // fixed
+			$ofdReceiptItem->vat = $this->VAT_type == 'none' ? 'none' : '18';
 			$ofdReceiptItems[] = $ofdReceiptItem;
         }
 
