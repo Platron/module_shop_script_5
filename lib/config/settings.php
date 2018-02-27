@@ -38,6 +38,7 @@ return array(
         'description'  => 'Указывается в чеке отправляемом в ОФД',
         'control_type' => waHtmlControl::SELECT,
         'options'      => array(
+			     'none' => 'Не облагается',
                              '0' => '0%',
                              '10' => '10%',
                              '18' => '18%',
